@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Activity,
@@ -15,22 +15,153 @@ import {
   ChevronDown,
   Menu,
   MoreVertical,
-  LineChart
+  LineChart,
+  Store,
+  User,
+  LogOut,
+  Loader2,
+  Sprout,
+  ShoppingBag
+, Truck, Package, CheckCircle2, MapPin, AlertTriangle
 } from 'lucide-react';
-import { APIProvider, Map as GoogleMap } from '@vis.gl/react-google-maps';
+import { getSession, logout, getRoleColor, getUsers } from '../lib/auth';
+import { APIProvider, Map as GoogleMap, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
 
 import { METRICS, AI_LIVE_FEED, ANALYTICS_DATA } from '../data/mockData';
+import NotificationBell from './NotificationBell';
+
+const RouteLine = ({ origin, destination }: { origin: any, destination: any }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !(window as any).google) return;
+    const polyline = new (window as any).google.maps.Polyline({
+      path: [origin, destination],
+      geodesic: true,
+      strokeColor: '#10b981',
+      strokeOpacity: 0.8,
+      strokeWeight: 3,
+    });
+    polyline.setMap(map);
+    return () => polyline.setMap(null);
+  }, [map, origin, destination]);
+  return null;
+};
 
 export default function Dashboard() {
   const [activeNav, setActiveNav] = useState('Overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [availableDeliveriesCount, setAvailableDeliveriesCount] = useState(0);
+  const [activeDeliveriesCount, setActiveDeliveriesCount] = useState(0);
+  const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
+  const [completedRoutesCount, setCompletedRoutesCount] = useState(0);
+  const [activeRoute, setActiveRoute] = useState<any>(null);
+  const [totalRegisteredUsers, setTotalRegisteredUsers] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [activeCooperatives, setActiveCooperatives] = useState(0);
+  const [platformActiveDispatches, setPlatformActiveDispatches] = useState(0);
+  const [recentSignups, setRecentSignups] = useState<any[]>([]);
+  const [platformRoutes, setPlatformRoutes] = useState<any[]>([]);
 
-  const navItems = [
-    { name: 'Dashboard Overview', icon: LayoutDashboard },
-    { name: 'Live Tracking', icon: MapIcon },
-    { name: 'Analytics', icon: BarChart3 },
-    { name: 'System Settings', icon: Settings },
+  useEffect(() => {
+    const user = getSession();
+    if (!user) {
+      window.location.href = '/login';
+    } else {
+      setSession(user);
+      setIsAuthLoading(false);
+      
+      const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
+      setPendingOrdersCount(pending.length);
+      const available = orders.filter((o: any) => o.status === 'pending' && !o.driverId);
+      setAvailableDeliveriesCount(available.length);
+      
+      const activeForDriver = orders.filter((o: any) => o.driverId === user.id && o.status !== 'delivered' && o.status !== 'cancelled');
+      setActiveDeliveriesCount(activeForDriver.length);
+      setActiveDeliveries(activeForDriver);
+
+      const completedForDriver = orders.filter((o: any) => o.driverId === user.id && o.status === 'delivered');
+      setCompletedRoutesCount(completedForDriver.length);
+
+      if (activeForDriver.length > 0) {
+        setActiveRoute({
+          origin: { lat: 15.4867, lng: 120.9664 },
+          destination: { lat: 14.5990, lng: 120.9672 },
+          isDelayed: Math.random() > 0.5
+        });
+      }
+
+      if (user.role === 'superadmin') {
+         const sysUsers = getUsers();
+         if (sysUsers.length === 0) {
+           // Fallback if auth.ts hasn't seeded yet
+           setTotalRegisteredUsers(6);
+         } else {
+           setTotalRegisteredUsers(sysUsers.length);
+           setPendingApprovals(sysUsers.filter((u: any) => u.status === 'Pending').length);
+           setRecentSignups([...sysUsers].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
+           const orgs = new Set(sysUsers.map((u:any) => u.coopName).filter(Boolean));
+           setActiveCooperatives(orgs.size);
+         }
+         
+         const allDispatches = orders.filter((o:any) => o.status === 'confirmed' || o.status === 'in-transit');
+         setPlatformActiveDispatches(allDispatches.length);
+         
+         const routes = allDispatches.map((d: any) => ({
+            origin: d.pickupCoords || { lat: 15.4867, lng: 120.9664 },
+            destination: d.deliveryCoords || { lat: 14.5990, lng: 120.9672 },
+         }));
+         setPlatformRoutes(routes.length > 0 ? routes : [{ origin: { lat: 15.4867, lng: 120.9664 }, destination: { lat: 14.5990, lng: 120.9672 } }]);
+      }
+    }
+  }, []);
+
+  const driverCards = [
+    { id: 'dc1', label: 'Assigned Tasks', value: activeDeliveriesCount, icon: <Package className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> },
+    { id: 'dc2', label: 'Completed Routes', value: completedRoutesCount, icon: <CheckCircle2 className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> },
+    { id: 'dc3', label: 'Active ETA Status', value: activeRoute ? (activeRoute.isDelayed ? 'Delayed' : 'On Time') : 'No Active Route', trend: activeRoute?.isDelayed ? 'down' : 'up', trendValue: activeRoute?.isDelayed ? 'Check feed' : 'All good', icon: <Clock className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> }
   ];
+
+  const superadminCards = [
+    { id: 'sa1', label: 'Total Registered Users', value: totalRegisteredUsers, icon: <User className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> },
+    { id: 'sa2', label: 'Pending Approvals', value: pendingApprovals, icon: <AlertTriangle className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> },
+    { id: 'sa3', label: 'Active Cooperatives', value: activeCooperatives, icon: <Store className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> },
+    { id: 'sa4', label: 'Active Dispatches', value: platformActiveDispatches, icon: <Truck className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform duration-300" /> }
+  ];
+
+  const feedItems = session?.role === 'driver' 
+    ? AI_LIVE_FEED.filter(item => /logistic|route|dispatch|delay|weather/i.test(item.message))
+    : AI_LIVE_FEED;
+  const driverAlerts = feedItems
+    .filter(item => item.severity === 'high' || item.severity === 'medium')
+    .slice(0, 5);
+
+    const navItems = [
+    { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
+    ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
+    ...(session?.role === 'driver' ? [
+      { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
+      { name: 'My Deliveries', icon: Package, href: '/my-deliveries' }
+    ] : []),
+    { name: 'Live Tracking', icon: MapIcon, href: '/live-tracking' },
+    { name: 'Analytics', icon: BarChart3, href: '/analytics' },
+    ...(session?.role === 'superadmin' ? [{ name: 'User Management', icon: Settings, href: '/system-settings' }] : []),
+    ...(session && session.role !== 'superadmin' ? [{ name: 'Profile', icon: User, href: '/profile' }] : []),
+  ];
+
+  if (isAuthLoading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="w-12 h-12 text-[#1a5c2e] animate-spin mb-4" />
+        <div className="text-[#1a5c2e] font-bold text-lg animate-pulse">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-slate-50/50 text-slate-900 font-sans overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
@@ -52,12 +183,27 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {session && !isSidebarCollapsed && (
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-col items-center text-center bg-slate-50/50">
+              <div className="w-12 h-12 bg-[#1a5c2e] rounded-full flex items-center justify-center text-white text-lg font-black shadow-sm mb-3">
+                {session.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
+              <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
+                {session.role}
+              </span>
+            </div>
+          )}
+
           {/* Navigation */}
           <nav className="p-4 space-y-1.5">
             {navItems.map((item) => (
               <button
                 key={item.name}
-                onClick={() => setActiveNav(item.name)}
+                onClick={() => {
+                  setActiveNav(item.name);
+                  if (item.href) window.location.href = item.href;
+                }}
                 title={isSidebarCollapsed ? item.name : undefined}
                 className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden ${
                   activeNav === item.name
@@ -76,16 +222,31 @@ export default function Dashboard() {
                     : 'text-slate-400 group-hover:scale-110 group-hover:text-slate-600'
                 }`} />
                 {!isSidebarCollapsed && (
-                  <span className="relative z-10 whitespace-nowrap">{item.name}</span>
+                  <div className="relative z-10 flex flex-1 items-center justify-between">
+                    <span className="whitespace-nowrap">{item.name}</span>
+                                        {item.name === 'My Orders' && pendingOrdersCount > 0 && (
+                      <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {pendingOrdersCount}
+                      </span>
+                    )}
+                    {item.name === 'Available Deliveries' && availableDeliveriesCount > 0 && (
+                      <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {availableDeliveriesCount}
+                      </span>
+                    )}
+                    {item.name === 'My Deliveries' && activeDeliveriesCount > 0 && (
+                      <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {activeDeliveriesCount}
+                      </span>
+                    )}
+                  </div>
                 )}
               </button>
             ))}
           </nav>
         </div>
 
-        {/* Bottom Actions */}
         <div className="p-4 flex flex-col gap-2">
-          {/* Collapse Toggle */}
           <button 
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className={`w-full flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors ${isSidebarCollapsed ? '' : 'hidden'}`}
@@ -93,9 +254,15 @@ export default function Dashboard() {
             <Menu className="w-5 h-5" />
           </button>
           
-          <button className={`w-full flex items-center justify-center bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white p-3 rounded-xl text-sm font-semibold transition-all duration-300 shadow-[0_4px_12px_rgba(16,185,129,0.25)] hover:shadow-[0_6px_16px_rgba(16,185,129,0.35)] hover:-translate-y-0.5 active:translate-y-0 ${isSidebarCollapsed ? 'px-0' : 'gap-2 px-4'}`}>
-            <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 shrink-0" />
-            {!isSidebarCollapsed && <span className="whitespace-nowrap">New Incident</span>}
+          <button 
+            onClick={() => {
+              logout();
+              window.location.href = '/login';
+            }}
+            className={`w-full flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-3 rounded-xl text-sm font-bold transition-all duration-300 ${isSidebarCollapsed ? 'px-0' : 'gap-2 px-4'}`}
+          >
+            <LogOut className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="whitespace-nowrap">Logout</span>}
           </button>
         </div>
       </aside>
@@ -133,25 +300,22 @@ export default function Dashboard() {
               />
             </div>
 
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 rounded-lg transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 block h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
-            </button>
+            <NotificationBell role={session?.role} />
 
             <div className="h-8 w-px bg-slate-200" />
 
-            <button className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img
-                className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-sm"
-                src="https://ui-avatars.com/api/?name=Admin+User&background=10b981&color=fff"
-                alt="User avatar"
-              />
-              <div className="hidden lg:flex flex-col items-start">
-                <span className="text-sm font-semibold text-slate-700 leading-tight">Mark Baguisi</span>
-                <span className="text-[11px] font-medium text-slate-500">Superadmin</span>
-              </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 hidden lg:block" />
-            </button>
+            {session && (
+              <button className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                <div className="h-9 w-9 bg-[#1a5c2e] rounded-full flex items-center justify-center text-white font-bold text-sm border-2 border-white shadow-sm">
+                  {session.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                </div>
+                <div className="hidden lg:flex flex-col items-start">
+                  <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                </div>
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              </button>
+            )}
           </div>
         </header>
 
@@ -170,7 +334,7 @@ export default function Dashboard() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                {METRICS.map((metric) => (
+                {(session?.role === 'driver' ? driverCards : session?.role === 'superadmin' ? superadminCards : METRICS).map((metric: any) => (
                   <div 
                     key={metric.id} 
                     className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-200/60 transition-all duration-300 flex flex-col justify-between cursor-default hover:-translate-y-1"
@@ -183,13 +347,15 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <div className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight group-hover:text-emerald-950 transition-colors">{metric.value}</div>
-                      <div className="flex items-center gap-1.5 text-xs font-semibold">
-                        <span className={`
-                          ${metric.trend === 'up' || metric.trend === 'down' ? 'text-emerald-600' : 'text-slate-500'}
-                        `}>
-                          {metric.trendValue}
-                        </span>
-                      </div>
+                      {metric.trend && (
+                        <div className="flex items-center gap-1.5 text-xs font-semibold">
+                          <span className={`
+                            ${metric.trend === 'up' || metric.trend === 'down' ? 'text-emerald-600' : 'text-slate-500'}
+                          `}>
+                            {metric.trendValue}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -218,7 +384,7 @@ export default function Dashboard() {
                 {/* Google Maps Container */}
                 <div className="flex-1 relative overflow-hidden bg-slate-100">
                   {/* SPARKFEST COMPLIANCE: Google Maps Platform Integration */}
-                  <APIProvider apiKey="YOUR_GOOGLE_MAPS_API_KEY">
+                  <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string}>
                     <GoogleMap
                       defaultCenter={{ lat: 14.5995, lng: 120.9842 }} // Default to Manila
                       defaultZoom={11}
@@ -226,17 +392,30 @@ export default function Dashboard() {
                       disableDefaultUI={true}
                       mapId="DEMO_MAP_ID"
                       className="w-full h-full"
-                    />
+                    >
+                      {session?.role === 'driver' && activeRoute && (
+                        <>
+                          <RouteLine origin={activeRoute.origin} destination={activeRoute.destination} />
+                          <AdvancedMarker position={activeRoute.origin}>
+                            <Pin background={'#10b981'} glyphColor={'#fff'} borderColor={'#064e3b'} />
+                          </AdvancedMarker>
+                          <AdvancedMarker position={activeRoute.destination}>
+                            <Pin background={'#ef4444'} glyphColor={'#fff'} borderColor={'#7f1d1d'} />
+                          </AdvancedMarker>
+                        </>
+                      )}
+                    </GoogleMap>
                   </APIProvider>
                   
-                  {/* Fallback Overlay to instruct user if map fails or key is missing */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="bg-white/80 backdrop-blur-md px-6 py-4 rounded-2xl border border-slate-200/50 shadow-lg text-center flex flex-col items-center">
-                      <MapIcon className="w-8 h-8 text-slate-400 mb-2" />
-                      <p className="text-sm font-semibold text-slate-700">Google Map Loaded</p>
-                      <p className="text-xs text-slate-500 mt-1 max-w-[250px]">Replace 'YOUR_GOOGLE_MAPS_API_KEY' in the codebase to fully activate mapping features.</p>
+                  {session?.role === 'driver' && !activeRoute && (
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center">
+                      <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center max-w-sm text-center">
+                        <MapPin className="w-12 h-12 text-slate-300 mb-4" />
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">No active route</h3>
+                        <p className="text-slate-500 text-center">Accept a new delivery dispatch from the Available Deliveries page to view live routing.</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -253,7 +432,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                  {AI_LIVE_FEED.map((item) => (
+                  {feedItems.map((item) => (
                     <div 
                       key={item.id} 
                       className="p-4 rounded-xl border border-slate-100/80 bg-slate-50/50 hover:bg-white hover:border-emerald-100 hover:shadow-[0_4px_20px_rgba(16,185,129,0.05)] transition-all duration-300 group cursor-default relative overflow-hidden flex flex-col gap-2"
@@ -296,8 +475,85 @@ export default function Dashboard() {
 
             </div>
 
-            {/* Bottom Section - Analytics & Trends */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-6">
+                        {/* Bottom Section - Role Based */}
+            {session?.role === 'driver' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-6">
+                
+                {/* Driver Panel 1: My Active Deliveries */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 flex flex-col h-72 group">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                      <Package className="w-5 h-5 text-emerald-600" />
+                      My Active Deliveries
+                    </h3>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
+                    {activeDeliveries.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                        <Truck className="w-8 h-8 mb-2 opacity-50" />
+                        <p className="text-sm font-medium">No active deliveries</p>
+                      </div>
+                    ) : (
+                      activeDeliveries.map((delivery) => (
+                        <div key={delivery.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-emerald-50/50 hover:border-emerald-100 transition-colors">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="font-bold text-slate-800 text-sm">{delivery.crop} <span className="text-slate-500 font-normal">({delivery.quantity}kg)</span></div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                              {delivery.status.replace('_', ' ')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="truncate max-w-[120px]">{delivery.pickupLocation || 'Farm'}</span>
+                            <span className="text-slate-300 mx-1">→</span>
+                            <span className="truncate max-w-[120px]">{delivery.deliveryLocation || 'Market'}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Driver Panel 2: Recent Logistics Alerts */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 flex flex-col h-72 group">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-emerald-600" />
+                      Recent Logistics Alerts
+                    </h3>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
+                    {driverAlerts.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 mb-2 opacity-50 text-emerald-400" />
+                        <p className="text-sm font-medium">No recent alerts</p>
+                      </div>
+                    ) : (
+                      driverAlerts.map((alert) => (
+                        <div key={alert.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white transition-colors">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                              alert.severity === 'high' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {alert.severity === 'high' ? 'URGENT' : 'WARNING'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">{alert.timestamp}</span>
+                          </div>
+                          <p className="text-xs font-semibold text-slate-700 line-clamp-2 leading-relaxed">
+                            {alert.message}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-6">
+
               
               {/* Chart Placeholder 1 */}
               <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 flex flex-col h-72 group">
@@ -347,10 +603,10 @@ export default function Dashboard() {
                    <div className="absolute inset-0 p-4 flex items-center justify-center text-slate-400">
                      <p className="text-sm font-medium">Recharts Integration Ready</p>
                    </div>
-                </div>
+                 </div>
               </div>
-
             </div>
+          )}
 
           </div>
         </main>

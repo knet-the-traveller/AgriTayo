@@ -96,6 +96,14 @@ export const AI_LIVE_FEED: FeedItem[] = [
   },
 ];
 
+export const SELLER_NOTIFICATIONS = [
+  { id: 'sn1', type: 'NEW_ORDER', message: "Maria Clara Santos ordered 100kg of Pechay", time: "2 mins ago", unread: true },
+  { id: 'sn2', type: 'DRIVER_ACCEPTED', message: "Hanzel Guevarra accepted delivery for Order #1042", time: "15 mins ago", unread: true },
+  { id: 'sn3', type: 'ORDER_DELIVERED', message: "Order #1039 successfully delivered to Landmark Supermarket", time: "1 hr ago", unread: false },
+  { id: 'sn4', type: 'URGENT_ALERT', message: "Urgent: Route 4 delayed — your shipment may arrive late", time: "3 hrs ago", unread: false },
+  { id: 'sn5', type: 'PRICE_ALERT', message: "Tomato prices dropped 12% in Metro Manila markets", time: "5 hrs ago", unread: false },
+];
+
 export const ANALYTICS_DATA: AnalyticsDataPoint[] = [
   { period: 'Week 1', predicted: 4000, actual: 4100 },
   { period: 'Week 2', predicted: 4200, actual: 4050 },
