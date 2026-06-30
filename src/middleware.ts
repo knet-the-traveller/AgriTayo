@@ -6,7 +6,7 @@ export function middleware(request: NextRequest) {
   const role = request.cookies.get('agritayo_role')?.value;
   const { pathname } = request.nextUrl;
 
-  const protectedRoutes = ['/', '/market', '/live-tracking', '/analytics', '/system-settings', '/profile', '/post-harvest', '/my-orders', '/available-deliveries', '/my-deliveries'];
+  const protectedRoutes = ['/', '/market', '/live-tracking', '/analytics', '/system-settings', '/profile', '/post-harvest', '/my-orders', '/available-deliveries', '/my-deliveries', '/seller-orders'];
 
   if (!session && protectedRoutes.includes(pathname)) {
     return NextResponse.redirect(new URL('/login', request.url));

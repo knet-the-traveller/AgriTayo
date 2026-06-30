@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SkeletonCard } from '@/components/Skeleton';
+import { useCountUp } from '@/hooks/useCountUp';
 import NotificationBell from '../../components/NotificationBell';
 import { useRouter } from 'next/navigation';
 import { 
@@ -9,7 +11,7 @@ import {
   Package, MapPin, Clock, CheckCircle2
 , ShoppingBag, Sprout, ChevronRight
 , Store, Settings
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '@/lib/auth';
 
 export default function MyDeliveriesPage() {
@@ -19,6 +21,7 @@ export default function MyDeliveriesPage() {
   
   const [activeNav, setActiveNav] = useState('My Deliveries');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState('Active');
   const [toastMessage, setToastMessage] = useState('');
   
@@ -35,6 +38,10 @@ export default function MyDeliveriesPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       loadOrders(user.id);
     }
   }, []);
@@ -69,6 +76,7 @@ export default function MyDeliveriesPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -162,7 +170,7 @@ export default function MyDeliveriesPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -257,7 +265,7 @@ export default function MyDeliveriesPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>

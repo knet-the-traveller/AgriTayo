@@ -7,7 +7,7 @@ import {
   Leaf, LogOut, LayoutDashboard, Store, Map as MapIcon, BarChart3, Settings, User, 
   Menu, ChevronDown, Bell, Sprout, CheckCircle2, Loader2, AlertCircle, MapPin, ShoppingBag
 , Truck, Package
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '@/lib/auth';
 
 const EMOJI_LIST = ['🌾', '🍅', '🍠', '🥬', '🌽', '🥒', '🫘', '🌿', '🍌', '🧅', '🧄', '🥕', '🍆', '🫑', '🥦', '🍋', '🥭', '🍍'];
@@ -26,6 +26,141 @@ const getFairPriceFloor = (category: string) => {
   }
 };
 
+
+const EditListingForm = ({ listing, onSave, onCancel }: { listing: any, onSave: (updated: any) => void, onCancel: () => void }) => {
+  const [cropName, setCropName] = useState(listing.crop || '');
+  const [category, setCategory] = useState(listing.category || 'Vegetable');
+  const [emoji, setEmoji] = useState(listing.emoji || '🌾');
+  const [volume, setVolume] = useState(listing.volume?.toString() || '');
+  const [price, setPrice] = useState(listing.price?.toString() || '');
+  const [minOrder, setMinOrder] = useState(listing.minimumOrder?.toString() || '');
+  const [harvestDate, setHarvestDate] = useState(listing.harvestDate || '');
+  const [availableUntil, setAvailableUntil] = useState(listing.availableUntil || '');
+  const [cooperative, setCooperative] = useState(listing.coop || '');
+  const [municipality, setMunicipality] = useState(listing.location?.split(',')[0]?.trim() || '');
+  const [province, setProvince] = useState(listing.location?.split(',')[1]?.trim() || '');
+  const [pickupMethod, setPickupMethod] = useState(listing.pickupMethod || 'Farm pickup');
+  const [notes, setNotes] = useState(listing.notes || '');
+  const [certifications, setCertifications] = useState<string[]>(listing.certifications || []);
+  const [contact, setContact] = useState(listing.contact || '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    if (!cropName.trim()) newErrors.cropName = 'Required';
+    if (!volume || Number(volume) <= 0) newErrors.volume = 'Must be > 0';
+    if (!price || Number(price) <= 0) newErrors.price = 'Must be > 0';
+    if (!harvestDate) newErrors.harvestDate = 'Required';
+    if (!municipality.trim()) newErrors.municipality = 'Required';
+    if (!province.trim()) newErrors.province = 'Required';
+    if (!contact.trim()) newErrors.contact = 'Required';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    
+    const isSoldOut = listing.volume <= 0 || listing.status === 'Sold Out';
+    const newVolume = Number(volume);
+    
+    const updated = {
+      ...listing,
+      crop: cropName,
+      category,
+      emoji,
+      volume: newVolume,
+      price: Number(price),
+      minimumOrder: minOrder ? Number(minOrder) : null,
+      harvestDate,
+      availableUntil: availableUntil || null,
+      coop: cooperative,
+      location: `${municipality}, ${province}`,
+      pickupMethod,
+      notes,
+      certifications,
+      contact,
+      status: (isSoldOut && newVolume > 0) ? 'Active' : listing.status
+    };
+    onSave(updated);
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c6e9d4] shadow-md flex flex-col overflow-hidden mb-3 animate-in fade-in slide-in-from-top-2 duration-200">
+      <div className="bg-[#e8f5ec] p-4 border-b border-[#c6e9d4] flex justify-between items-start">
+        <div>
+          <div className="text-[10px] font-bold text-[#1a5c2e] uppercase tracking-wider mb-1">Editing Listing: {listing.id}</div>
+          <div className="text-xs text-slate-600 font-medium">Posted on: {formatDate(listing.postedAt)}</div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {listing.volume <= 0 || listing.status === 'Sold Out' ? (
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-600">Sold Out</span>
+          ) : (
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700">Active</span>
+          )}
+        </div>
+      </div>
+      
+      {(listing.volume <= 0 || listing.status === 'Sold Out') && (
+        <div className="bg-amber-50 text-amber-800 text-xs font-bold p-3 border-b border-amber-100 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          This listing sold out. Increase volume to relist it as Active.
+        </div>
+      )}
+
+      <div className="p-4 space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Crop Name</label>
+            <input type="text" value={cropName} onChange={e => setCropName(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]" />
+            {errors.cropName && <p className="text-rose-500 text-[10px] font-bold mt-1">{errors.cropName}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]">
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Volume (kg)</label>
+            <input type="number" value={volume} onChange={e => setVolume(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]" />
+            {errors.volume && <p className="text-rose-500 text-[10px] font-bold mt-1">{errors.volume}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Price (₱/kg)</label>
+            <input type="number" value={price} onChange={e => setPrice(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]" />
+            {errors.price && <p className="text-rose-500 text-[10px] font-bold mt-1">{errors.price}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Harvest Date</label>
+            <input type="date" value={harvestDate} onChange={e => setHarvestDate(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]" />
+            {errors.harvestDate && <p className="text-rose-500 text-[10px] font-bold mt-1">{errors.harvestDate}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Contact</label>
+            <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1a5c2e]" />
+            {errors.contact && <p className="text-rose-500 text-[10px] font-bold mt-1">{errors.contact}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 text-sm transition-colors">
+          Cancel
+        </button>
+        <button onClick={handleSave} className="px-5 py-2 rounded-lg font-bold text-white bg-[#1a5c2e] hover:bg-emerald-800 shadow-sm text-sm transition-colors">
+          Save Changes
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default function PostHarvestPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
@@ -33,6 +168,7 @@ export default function PostHarvestPage() {
   
   const [activeNav, setActiveNav] = useState('Post Harvest');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
 
   // Form States
@@ -58,8 +194,42 @@ export default function PostHarvestPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPriceWarning, setShowPriceWarning] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const [isAiPriceLoading, setIsAiPriceLoading] = useState(false);
+  const [aiPriceSuggestion, setAiPriceSuggestion] = useState<any>(null);
+
+  const fetchAiPriceSuggestion = async () => {
+    if (isAiPriceLoading) return;
+    if (!cropName || !category) {
+      setErrors({ ...errors, price: 'Enter crop name and category first to get AI suggestion' });
+      return;
+    }
+    
+    setIsAiPriceLoading(true);
+    setAiPriceSuggestion(null);
+    try {
+      const response = await fetch('/api/ai-price-suggestion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cropName, category, province })
+      });
+      const data = await response.json();
+      setAiPriceSuggestion(data);
+    } catch (err) {
+      setAiPriceSuggestion({
+        minPrice: null,
+        maxPrice: null,
+        reasoning: "Unable to fetch AI suggestion right now. Use your own judgment or check the Market page for similar listings.",
+        fallback: true
+      });
+    } finally {
+      setIsAiPriceLoading(false);
+    }
+  };
+
   
   const [activeListings, setActiveListings] = useState<any[]>([]);
+  const [expandedListingId, setExpandedListingId] = useState<string | null>(null);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [availableDeliveriesCount, setAvailableDeliveriesCount] = useState(0);
   const [activeDeliveriesCount, setActiveDeliveriesCount] = useState(0);
@@ -71,6 +241,10 @@ export default function PostHarvestPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       setCooperative(user.cooperative || '');
       setProvince(user.province || '');
       setContact(user.phone || '');
@@ -97,6 +271,7 @@ export default function PostHarvestPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -186,6 +361,16 @@ export default function PostHarvestPage() {
     submitListing();
   };
 
+  const updateListing = (updatedListing: any) => {
+    const storedListings = JSON.parse(localStorage.getItem('agritayo_listings') || '[]');
+    const newArray = storedListings.map((l: any) => l.id === updatedListing.id ? updatedListing : l);
+    localStorage.setItem('agritayo_listings', JSON.stringify(newArray));
+    setExpandedListingId(null);
+    setToastMessage('Listing updated!');
+    setTimeout(() => setToastMessage(''), 3000);
+    loadActiveListings(session);
+  };
+
   const removeListing = (id: string) => {
     const storedListings = JSON.parse(localStorage.getItem('agritayo_listings') || '[]');
     const filtered = storedListings.filter((l: any) => l.id !== id);
@@ -209,7 +394,6 @@ export default function PostHarvestPage() {
   };
 
   const urgencyInfo = getUrgencyBadge(harvestDate);
-  const fairPriceRange = getFairPriceFloor(category);
 
   return (
     <div className="flex h-screen w-full bg-slate-50/50 text-slate-900 font-sans overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
@@ -237,7 +421,7 @@ export default function PostHarvestPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -269,6 +453,11 @@ export default function PostHarvestPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -338,7 +527,7 @@ export default function PostHarvestPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -435,7 +624,38 @@ export default function PostHarvestPage() {
                             {errors.volume && <p className="text-rose-500 text-xs font-bold mt-1.5">{errors.volume}</p>}
                           </div>
                           <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1.5">Price per kg *</label>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-sm font-bold text-slate-700">Price per kg *</label>
+                                <button 
+                                  type="button"
+                                  onClick={fetchAiPriceSuggestion}
+                                  disabled={isAiPriceLoading}
+                                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  {isAiPriceLoading ? 'Thinking...' : '✨ Get AI price suggestion'}
+                                </button>
+                              </div>
+                              {aiPriceSuggestion && (
+                                <div className="mb-3 p-3 bg-white border border-emerald-200 rounded-xl shadow-sm relative animate-in fade-in slide-in-from-top-2">
+                                  <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-t border-l border-emerald-200 rotate-45"></div>
+                                  <div className="relative z-10">
+                                    {aiPriceSuggestion.minPrice && aiPriceSuggestion.maxPrice ? (
+                                      <>
+                                        <div className="text-sm font-bold text-emerald-800 mb-1">
+                                          Suggested: ₱{aiPriceSuggestion.minPrice}–₱{aiPriceSuggestion.maxPrice}/kg
+                                        </div>
+                                        <p className="text-xs text-slate-600 mb-2 leading-relaxed">{aiPriceSuggestion.reasoning}</p>
+                                        <div className="flex gap-2">
+                                          <button type="button" onClick={() => setPrice(aiPriceSuggestion.minPrice.toString())} className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold py-1.5 rounded-lg border border-emerald-200 transition-colors">Use ₱{aiPriceSuggestion.minPrice}</button>
+                                          <button type="button" onClick={() => setPrice(aiPriceSuggestion.maxPrice.toString())} className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold py-1.5 rounded-lg border border-emerald-200 transition-colors">Use ₱{aiPriceSuggestion.maxPrice}</button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <p className="text-xs text-slate-600 leading-relaxed">{aiPriceSuggestion.reasoning}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             <div className="relative">
                               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₱</span>
                               <input type="number" min="1" placeholder="e.g. 35" value={price} onChange={e => setPrice(e.target.value)} className={`w-full border ${errors.price ? 'border-rose-400' : 'border-slate-300'} rounded-xl pl-8 pr-4 py-3 text-sm outline-none bg-slate-50 focus:bg-white`} />
@@ -450,9 +670,7 @@ export default function PostHarvestPage() {
                             </div>
                           </div>
                         </div>
-                        <p className="text-sm font-semibold text-emerald-600 mt-3">
-                          Suggested fair price floor: ₱{fairPriceRange[0]}–{fairPriceRange[1]}/kg based on market average
-                        </p>
+                        
                       </section>
 
                       {/* Section 3 */}
@@ -668,28 +886,43 @@ export default function PostHarvestPage() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {activeListings.map(listing => (
-                          <div key={listing.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3 group hover:border-emerald-300 transition-colors">
+                        {activeListings.map(listing => {
+                          const isSoldOut = listing.volume <= 0 || listing.status === 'Sold Out';
+                          const isExpanded = expandedListingId === listing.id;
+
+                          if (isExpanded) {
+                            return <EditListingForm key={listing.id} listing={listing} onSave={updateListing} onCancel={() => setExpandedListingId(null)} />;
+                          }
+
+                          return (
+                          <div key={listing.id} onClick={() => setExpandedListingId(listing.id)} className={`bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3 group cursor-pointer transition-all ${isSoldOut ? 'opacity-60 grayscale-[0.5]' : 'hover:border-emerald-300 hover:shadow-md'}`}>
                             <div className="flex justify-between items-start">
                               <div className="flex items-center gap-2">
                                 <span className="text-xl">{listing.emoji}</span>
                                 <div>
                                   <h4 className="font-bold text-slate-900 leading-tight">{listing.crop}</h4>
-                                  <p className="text-xs font-semibold text-slate-500">{listing.volume}kg @ ₱{listing.price}/kg</p>
+                                  <p className="text-xs font-semibold text-slate-500">{isSoldOut ? 0 : listing.volume}kg @ ₱{listing.price}/kg</p>
                                 </div>
                               </div>
-                              <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700">Active</span>
+                              <div className="flex items-center gap-2">
+                                {isSoldOut ? (
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-500">Sold Out</span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700">Active</span>
+                                )}
+                                <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                              </div>
                             </div>
                             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                               <div className="text-xs font-medium text-slate-500">
                                 Harvest: <span className="font-bold text-slate-700">{listing.harvestDate}</span>
                               </div>
-                              <button onClick={() => removeListing(listing.id)} className="text-xs font-bold text-rose-500 hover:text-rose-700 hover:underline">
+                              <button onClick={(e) => { e.stopPropagation(); removeListing(listing.id); }} className="text-xs font-bold text-rose-500 hover:text-rose-700 hover:underline">
                                 Remove
                               </button>
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SkeletonCard } from '@/components/Skeleton';
 import NotificationBell from '../../components/NotificationBell';
 import {
   LayoutDashboard,
@@ -27,7 +28,7 @@ import {
   Banknote,
   CheckCircle2
 , Package
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getSession, logout, getRoleColor } from '../../lib/auth';
 
@@ -45,6 +46,7 @@ const LISTINGS = [
 export default function MarketPage() {
   const [activeNav, setActiveNav] = useState('Market');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState('All');
   const [filterLocation, setFilterLocation] = useState('All Locations');
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -77,6 +79,12 @@ export default function MarketPage() {
   const router = useRouter();
 
   const [allListings, setAllListings] = useState<any[]>(LISTINGS);
+  const [isListingsLoading, setIsListingsLoading] = useState(true);
+
+  const [aiMatchData, setAiMatchData] = useState<any>(null);
+  const [isAiLoading, setIsAiLoading] = useState(true);
+  const hasFetchedAiRef = useRef(false);
+
 
   useEffect(() => {
     const user = getSession();
@@ -85,9 +93,22 @@ export default function MarketPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
-      const storedListings = JSON.parse(localStorage.getItem('agritayo_listings') || '[]');
-      setAllListings([...LISTINGS, ...storedListings]);
+      const timer = setTimeout(() => {
+        try {
+          const storedListings = JSON.parse(localStorage.getItem('agritayo_listings') || '[]');
+          setAllListings([...LISTINGS, ...storedListings]);
+        } catch(error) {
+          console.error('Failed to load listings:', error);
+          setAllListings(LISTINGS);
+        } finally {
+          setIsListingsLoading(false);
+        }
+      }, 300);
       
       const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
       const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
@@ -97,6 +118,61 @@ export default function MarketPage() {
       
       const activeForDriver = orders.filter((o: any) => o.driverId === user.id && o.status !== 'delivered' && o.status !== 'cancelled');
       setActiveDeliveriesCount(activeForDriver.length);
+
+      // AI Match Fetching
+      const fetchAiMatch = async (forceRefresh = false) => {
+        setIsAiLoading(true);
+        const cacheKey = 'ai_match_cache';
+        
+        if (forceRefresh) {
+          sessionStorage.removeItem(cacheKey);
+        } else {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const { timestamp, data } = JSON.parse(cached);
+            if (Date.now() - timestamp < 10 * 60 * 1000) {
+              setAiMatchData(data);
+              setIsAiLoading(false);
+              return;
+            }
+          }
+        }
+
+        try {
+          const _allLists = [...LISTINGS, ...JSON.parse(localStorage.getItem('agritayo_listings') || '[]')];
+          const response = await fetch('/api/ai-match', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ listings: _allLists })
+          });
+          const data = await response.json();
+          setAiMatchData(data);
+          sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data }));
+        } catch (err) {
+          setAiMatchData({
+             fallback: true,
+             headline: "Market conditions look stable today",
+             detail: "Unable to generate live insights right now. Check back shortly.",
+             recommendedAction: "Browse the market for current listings.",
+             urgentCrop: null
+          });
+        }
+        setIsAiLoading(false);
+      };
+      
+      if (!hasFetchedAiRef.current) {
+        hasFetchedAiRef.current = true;
+        fetchAiMatch();
+      }
+      
+      // Auto-apply query param search
+      const urlParams = new URLSearchParams(window.location.search);
+      const cropQuery = urlParams.get('crop');
+      if (cropQuery) {
+        setSearchQuery(cropQuery);
+      }
+
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -117,6 +193,7 @@ export default function MarketPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -152,6 +229,7 @@ export default function MarketPage() {
 
     const newOrder = {
       id: "ORD-" + Date.now(),
+      listingId: selectedListing.id || `mock-${selectedListing.crop.toLowerCase()}`,
       buyerId: session.id,
       buyerName: session.name,
       sellerId: selectedListing.sellerId || "mock",
@@ -234,7 +312,13 @@ export default function MarketPage() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50/50 text-slate-900 font-sans overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
+    <>
+      {/* IMPORTANT: Never add hover: transform classes 
+        (scale, translate) to this top-level wrapper or 
+        any full-page container. Hover effects must only 
+        be applied to individual interactive elements 
+        (buttons, cards, chips) scoped to themselves. */}
+      <div className="flex h-screen w-full bg-slate-50/50 text-slate-900 font-sans overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
       
       {/* Sidebar - Copied exactly to match without refactoring existing layout */}
       <aside className={`bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20 relative transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
@@ -259,7 +343,7 @@ export default function MarketPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -288,6 +372,11 @@ export default function MarketPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -366,7 +455,7 @@ export default function MarketPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -374,7 +463,7 @@ export default function MarketPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
+        <main className="animate-fadeIn flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
           <div className="max-w-[1200px] mx-auto space-y-8">
             
             {/* AI Match Banner */}
@@ -385,10 +474,25 @@ export default function MarketPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold">AI Match Alert</h3>
-                  <p className="text-emerald-100/90 text-sm font-medium">Root crops are in high demand near your area.</p>
+                  <button onClick={() => window.location.reload()} className="ml-3 text-xs font-bold text-emerald-200 hover:text-white underline underline-offset-2 transition-colors">🔄 Refresh insights</button>
+                  {isAiLoading ? (
+                    <p className="text-emerald-100/90 text-sm font-medium animate-pulse">🤖 Analyzing market conditions...</p>
+                  ) : (
+                    <>
+                      <p className="text-white text-base font-bold">{aiMatchData?.headline || 'Market conditions look stable today'}</p>
+                      <p className="text-emerald-100/90 text-sm font-medium mt-1">{aiMatchData?.detail || 'Unable to generate live insights right now. Check back shortly.'}</p>
+                    </>
+                  )}
                 </div>
               </div>
-              <button className="whitespace-nowrap bg-[#c9a227] hover:bg-[#b08e22] text-white px-6 py-2.5 rounded-xl font-bold transition-colors shadow-md active:scale-95">
+              <button 
+                onClick={() => {
+                  if (aiMatchData?.urgentCrop) {
+                    setSearchQuery(aiMatchData.urgentCrop);
+                  }
+                }}
+                className="whitespace-nowrap bg-[#c9a227] hover:bg-[#b08e22] text-white px-6 py-2.5 rounded-xl font-bold transition-colors shadow-md active:scale-95"
+              >
                 View Matches
               </button>
             </div>
@@ -497,8 +601,10 @@ export default function MarketPage() {
 
             {/* Listings Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredListings.map(item => (
-                <div key={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-emerald-200 transition-all duration-300 overflow-hidden flex flex-col group hover:-translate-y-1">
+              {isListingsLoading ? (
+                Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
+              ) : filteredListings.map((item, index) => (
+                <div key={item.id} style={{ animationDelay: `${index * 80}ms`, willChange: 'transform' }} className="animate-fadeIn bg-white rounded-2xl border border-slate-200 shadow-sm transition-all duration-200 hover:border-emerald-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer overflow-hidden flex flex-col group">
                   
                   {/* Top Row: Name + Badge */}
                   <div className="px-6 pt-6 flex justify-between items-start">
@@ -595,7 +701,7 @@ export default function MarketPage() {
                     <h3 className="font-bold text-base text-slate-900 leading-tight">{selectedListing.crop}</h3>
                     <p className="text-emerald-700 font-bold text-base leading-tight">₱{selectedListing.price}<span className="text-xs text-slate-500 font-medium">/kg</span></p>
                   </div>
-                  <p className="text-xs font-medium text-slate-500 mt-0.5">Seller: {selectedListing.farmer || selectedListing.sellerName || "Independent Farmer"}</p>
+                  <p className="text-xs font-medium text-slate-500 mt-0.5">Farmer: {selectedListing.farmer || selectedListing.sellerName || "Independent Farmer"}</p>
                 </div>
               </div>
             </div>
@@ -646,7 +752,7 @@ export default function MarketPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Add a note to the seller (optional)</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Add a note to the farmer (optional)</label>
                 <textarea 
                   rows={2}
                   placeholder="e.g. Can we arrange pickup on Saturday morning?"
@@ -761,5 +867,6 @@ export default function MarketPage() {
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #94a3b8; }
       `}} />
     </div>
+    </>
   );
 }

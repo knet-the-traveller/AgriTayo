@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SkeletonCard } from '@/components/Skeleton';
+import { useCountUp } from '@/hooks/useCountUp';
 import NotificationBell from '../../components/NotificationBell';
 import { useRouter } from 'next/navigation';
 import { 
@@ -9,7 +11,7 @@ import {
   ChevronRight, Package, MapPin, Clock, CheckCircle2, ChevronUp
 , ShoppingBag, Sprout
 , Store, Settings
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '@/lib/auth';
 
 const MOCK_DELIVERY_JOBS = [
@@ -132,6 +134,7 @@ export default function AvailableDeliveriesPage() {
   
   const [activeNav, setActiveNav] = useState('Available Deliveries');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState('All');
   const [sortBy, setSortBy] = useState('newest');
   const [toastMessage, setToastMessage] = useState('');
@@ -149,6 +152,10 @@ export default function AvailableDeliveriesPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
       loadOrders(user.id);
     }
@@ -188,6 +195,7 @@ export default function AvailableDeliveriesPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -322,7 +330,7 @@ export default function AvailableDeliveriesPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -417,7 +425,7 @@ export default function AvailableDeliveriesPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -581,7 +589,7 @@ export default function AvailableDeliveriesPage() {
                         <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 text-sm space-y-4 animate-in slide-in-from-top-2 duration-300">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                              <p className="font-bold text-slate-800 mb-2">Seller Information</p>
+                              <p className="font-bold text-slate-800 mb-2">Farmer Information</p>
                               <p className="text-slate-600"><span className="font-medium text-slate-500">Farmer:</span> {job.sellerName}</p>
                               {job.cooperative && <p className="text-slate-600"><span className="font-medium text-slate-500">Cooperative:</span> {job.cooperative}</p>}
                               <p className="text-slate-600"><span className="font-medium text-slate-500">Harvest Date:</span> {job.harvestDate}</p>

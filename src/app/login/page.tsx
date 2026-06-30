@@ -228,15 +228,15 @@ export default function LoginPage() {
               <div className="mb-6">
                 <label className="block text-sm font-bold text-slate-700 mb-3 text-center">Select your role to continue</label>
                 <div className="grid grid-cols-3 gap-3">
-                  <button type="button" onClick={() => setSignUpRole('seller')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${signUpRole === 'seller' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
+                  <button type="button" onClick={() => setSignUpRole('seller')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${signUpRole === 'seller' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
                     <Tractor className="w-6 h-6 mb-1.5" />
-                    <span className="text-xs font-bold">Seller</span>
+                    <span className="text-xs font-bold">Farmer</span>
                   </button>
-                  <button type="button" onClick={() => setSignUpRole('buyer')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${signUpRole === 'buyer' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
+                  <button type="button" onClick={() => setSignUpRole('buyer')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${signUpRole === 'buyer' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
                     <Store className="w-6 h-6 mb-1.5" />
                     <span className="text-xs font-bold">Buyer</span>
                   </button>
-                  <button type="button" onClick={() => setSignUpRole('driver')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${signUpRole === 'driver' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
+                  <button type="button" onClick={() => setSignUpRole('driver')} className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${signUpRole === 'driver' ? 'border-[#1a5c2e] bg-emerald-50 text-[#1a5c2e]' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}>
                     <Truck className="w-6 h-6 mb-1.5" />
                     <span className="text-xs font-bold">Driver</span>
                   </button>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import NotificationBell from '../../components/NotificationBell';
 import { useRouter } from 'next/navigation';
 import { Leaf, Eye, EyeOff, Lock, LogOut, ShieldCheck, Check, LayoutDashboard, Store, Map as MapIcon, BarChart3, Settings, User, Menu, ChevronDown, Bell, Search, Loader2, Sprout, ShoppingBag, MapPin, Package , Truck
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor, updateStoredUser } from '@/lib/auth';
 
 export default function ProfilePage() {
@@ -19,6 +19,7 @@ export default function ProfilePage() {
   // Layout States
   const [activeNav, setActiveNav] = useState('Profile');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   
   // Profile Form States
   const [formData, setFormData] = useState<any>({});
@@ -69,6 +70,7 @@ export default function ProfilePage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -161,7 +163,7 @@ export default function ProfilePage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -193,6 +195,11 @@ export default function ProfilePage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -262,7 +269,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -283,7 +290,7 @@ export default function ProfilePage() {
               </div>
               <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">{session.name}</h2>
               <span className={`mt-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
               <div className="mt-4 flex flex-col items-center gap-1">
                 <span className="text-sm font-medium text-slate-500">@{session.username}</span>

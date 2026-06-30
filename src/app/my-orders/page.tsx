@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SkeletonCard } from '@/components/Skeleton';
+import { useCountUp } from '@/hooks/useCountUp';
 import NotificationBell from '../../components/NotificationBell';
 import { useRouter } from 'next/navigation';
 import { 
@@ -8,7 +10,7 @@ import {
   Menu, ChevronDown, Bell, LogOut, Loader2, Sprout, ShoppingBag, MapPin, Truck, CheckCircle2, Box, XCircle, Leaf,
   Smartphone, CreditCard, Banknote
 , Package
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '@/lib/auth';
 
 export default function MyOrdersPage() {
@@ -18,12 +20,14 @@ export default function MyOrdersPage() {
   
   const [activeNav, setActiveNav] = useState('My Orders');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [availableDeliveriesCount, setAvailableDeliveriesCount] = useState(0);
   const [activeDeliveriesCount, setActiveDeliveriesCount] = useState(0);
 
   const [activeTab, setActiveTab] = useState('All');
   const [orders, setOrders] = useState<any[]>([]);
+  const [isOrdersLoading, setIsOrdersLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState('');
 
   const loadOrders = (user: any) => {
@@ -50,7 +54,20 @@ export default function MyOrdersPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
-      loadOrders(user);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
+      const timer = setTimeout(() => {
+        try {
+          loadOrders(user);
+        } catch (error) {
+          console.error('Failed to load orders:', error);
+          setOrders([]);
+        } finally {
+          setIsOrdersLoading(false);
+        }
+      }, 300);
     }
   }, []);
 
@@ -72,6 +89,7 @@ export default function MyOrdersPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -178,7 +196,7 @@ export default function MyOrdersPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -210,6 +228,11 @@ export default function MyOrdersPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -279,7 +302,7 @@ export default function MyOrdersPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -345,8 +368,8 @@ export default function MyOrdersPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                {filteredOrders.map(order => (
-                  <div key={order.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                {filteredOrders.map((order, index) => (
+                  <div key={order.id} style={{ animationDelay: `${index * 80}ms` }} className="animate-fadeIn bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                     
                     {/* Header Row */}
                     <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">

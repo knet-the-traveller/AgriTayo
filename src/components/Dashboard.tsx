@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useCountUp } from '../hooks/useCountUp';
+import { SkeletonStatCard } from './Skeleton';
 import {
   LayoutDashboard,
   Activity,
@@ -23,7 +25,7 @@ import {
   Sprout,
   ShoppingBag
 , Truck, Package, CheckCircle2, MapPin, AlertTriangle
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor, getUsers } from '../lib/auth';
 import { APIProvider, Map as GoogleMap, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
 
@@ -47,9 +49,28 @@ const RouteLine = ({ origin, destination }: { origin: any, destination: any }) =
   return null;
 };
 
+
+const AnimatedMetric = ({ valueStr }: { valueStr: any }) => {
+  if (valueStr === undefined || valueStr === null) return <span>0</span>;
+  const safeValueStr = String(valueStr ?? '');
+  const numMatch = safeValueStr.replace(/,/g, '').match(/[\d.]+/);
+  const num = numMatch ? parseFloat(numMatch[0]) : 0;
+  const animatedValue = useCountUp(num, 1000);
+  const isFloat = safeValueStr.includes('.');
+  const formattedNum = isFloat ? animatedValue.toFixed(1) : animatedValue.toLocaleString();
+  return <>{safeValueStr.replace(/[\d.,]+/, formattedNum)}</>;
+};
+
+const AnimatedCount = ({ value, suffix = '' }: { value: number, suffix?: string }) => {
+  const animatedValue = useCountUp(value, 1000);
+  return <>{animatedValue.toLocaleString()}{suffix}</>;
+};
+
 export default function Dashboard() {
+
   const [activeNav, setActiveNav] = useState('Overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
@@ -65,6 +86,11 @@ export default function Dashboard() {
   const [recentSignups, setRecentSignups] = useState<any[]>([]);
   const [platformRoutes, setPlatformRoutes] = useState<any[]>([]);
 
+  const [aiMatchData, setAiMatchData] = useState<any>(null);
+  const [isAiLoading, setIsAiLoading] = useState(true);
+  const hasFetchedAiRef = useRef(false);
+
+
   useEffect(() => {
     const user = getSession();
     if (!user) {
@@ -72,6 +98,10 @@ export default function Dashboard() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
       const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
       const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
@@ -116,6 +146,54 @@ export default function Dashboard() {
          }));
          setPlatformRoutes(routes.length > 0 ? routes : [{ origin: { lat: 15.4867, lng: 120.9664 }, destination: { lat: 14.5990, lng: 120.9672 } }]);
       }
+
+
+      // AI Match Fetching
+      const fetchAiMatch = async (forceRefresh = false) => {
+        setIsAiLoading(true);
+        const cacheKey = 'ai_match_cache';
+        
+        if (forceRefresh) {
+          sessionStorage.removeItem(cacheKey);
+        } else {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const { timestamp, data } = JSON.parse(cached);
+            if (Date.now() - timestamp < 10 * 60 * 1000) {
+              setAiMatchData(data);
+              setIsAiLoading(false);
+              return;
+            }
+          }
+        }
+
+        try {
+          // In Dashboard we only have access to agritayo_listings + MOCK_LISTINGS? 
+          // Let's just fetch agritayo_listings, we can't easily import LISTINGS without adding an import.
+          // Or we just send what's in local storage. 
+          const storedListings = JSON.parse(localStorage.getItem('agritayo_listings') || '[]');
+          const response = await fetch('/api/ai-match', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ listings: storedListings })
+          });
+          const data = await response.json();
+          setAiMatchData(data);
+          sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data }));
+        } catch (err) {
+          setAiMatchData({
+             fallback: true,
+             headline: "Market conditions look stable today",
+             detail: "Unable to generate live insights right now. Check back shortly.",
+             recommendedAction: "Browse the market for current listings.",
+             urgentCrop: null
+          });
+        }
+        setIsAiLoading(false);
+      };
+      
+      fetchAiMatch();
+
     }
   }, []);
 
@@ -143,6 +221,7 @@ export default function Dashboard() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -190,7 +269,7 @@ export default function Dashboard() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -224,6 +303,11 @@ export default function Dashboard() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -311,7 +395,7 @@ export default function Dashboard() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -320,10 +404,43 @@ export default function Dashboard() {
         </header>
 
         {/* Scrollable Main Content Area */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
+        <main className="animate-fadeIn flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
           
           <div className="max-w-[1600px] mx-auto space-y-8">
             
+{/* AI Match Banner */}
+            <div className="bg-[#1a5c2e] rounded-2xl p-6 shadow-lg shadow-emerald-900/10 flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
+              <div className="flex items-center gap-4 text-white">
+                <div className="bg-white/20 p-3 rounded-full">
+                  <Leaf className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">AI Match Alert</h3>
+                  <button onClick={() => window.location.reload()} className="ml-3 text-xs font-bold text-emerald-200 hover:text-white underline underline-offset-2 transition-colors">🔄 Refresh insights</button>
+                  {isAiLoading ? (
+                    <p className="text-emerald-100/90 text-sm font-medium animate-pulse">🤖 Analyzing market conditions...</p>
+                  ) : (
+                    <>
+                      <p className="text-white text-base font-bold">{aiMatchData?.headline || 'Market conditions look stable today'}</p>
+                      <p className="text-emerald-100/90 text-sm font-medium mt-1">{aiMatchData?.detail || 'Unable to generate live insights right now. Check back shortly.'}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  if (aiMatchData?.urgentCrop) {
+                    window.location.href = `/market?crop=${encodeURIComponent(aiMatchData.urgentCrop)}`;
+                  } else {
+                    window.location.href = `/market`;
+                  }
+                }}
+                className="whitespace-nowrap bg-[#c9a227] hover:bg-[#b08e22] text-white px-6 py-2.5 rounded-xl font-bold transition-colors shadow-md active:scale-95"
+              >
+                View Matches
+              </button>
+            </div>
+
             {/* Top Summary Strip */}
             <div>
               <div className="flex items-center justify-between mb-5">
@@ -334,10 +451,10 @@ export default function Dashboard() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                {(session?.role === 'driver' ? driverCards : session?.role === 'superadmin' ? superadminCards : METRICS).map((metric: any) => (
+                {(session?.role === 'driver' ? driverCards : session?.role === 'superadmin' ? superadminCards : METRICS).map((metric: any, index: number) => (
                   <div 
                     key={metric.id} 
-                    className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-200/60 transition-all duration-300 flex flex-col justify-between cursor-default hover:-translate-y-1"
+                    style={{ animationDelay: `${index * 80}ms` }} className="animate-fadeIn group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-200/60 transition-all duration-300 flex flex-col justify-between cursor-default hover:-translate-y-1"
                   >
                     <div className="flex items-center justify-between mb-5">
                       <span className="text-sm font-semibold text-slate-500 tracking-wide">{metric.label}</span>
@@ -346,7 +463,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight group-hover:text-emerald-950 transition-colors">{metric.value}</div>
+                      <div className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight group-hover:text-emerald-950 transition-colors"><AnimatedMetric valueStr={metric.value} /></div>
                       {metric.trend && (
                         <div className="flex items-center gap-1.5 text-xs font-semibold">
                           <span className={`
@@ -382,39 +499,47 @@ export default function Dashboard() {
                 </div>
                 
                 {/* Google Maps Container */}
-                <div className="flex-1 relative overflow-hidden bg-slate-100">
-                  {/* SPARKFEST COMPLIANCE: Google Maps Platform Integration */}
-                  <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string}>
-                    <GoogleMap
-                      defaultCenter={{ lat: 14.5995, lng: 120.9842 }} // Default to Manila
-                      defaultZoom={11}
-                      gestureHandling={'greedy'}
-                      disableDefaultUI={true}
-                      mapId="DEMO_MAP_ID"
-                      className="w-full h-full"
-                    >
-                      {session?.role === 'driver' && activeRoute && (
-                        <>
-                          <RouteLine origin={activeRoute.origin} destination={activeRoute.destination} />
-                          <AdvancedMarker position={activeRoute.origin}>
-                            <Pin background={'#10b981'} glyphColor={'#fff'} borderColor={'#064e3b'} />
-                          </AdvancedMarker>
-                          <AdvancedMarker position={activeRoute.destination}>
-                            <Pin background={'#ef4444'} glyphColor={'#fff'} borderColor={'#7f1d1d'} />
-                          </AdvancedMarker>
-                        </>
-                      )}
-                    </GoogleMap>
-                  </APIProvider>
-                  
-                  {session?.role === 'driver' && !activeRoute && (
-                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center">
-                      <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center max-w-sm text-center">
-                        <MapPin className="w-12 h-12 text-slate-300 mb-4" />
-                        <h3 className="text-xl font-bold text-slate-900 mb-2">No active route</h3>
-                        <p className="text-slate-500 text-center">Accept a new delivery dispatch from the Available Deliveries page to view live routing.</p>
-                      </div>
+                <div className="flex-1 relative overflow-hidden bg-slate-100 flex items-center justify-center">
+                  {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+                    <div style={{padding: '40px', textAlign: 'center', color: '#888'}}>
+                      Map unavailable — API key not configured.
                     </div>
+                  ) : (
+                    <>
+                      {/* SPARKFEST COMPLIANCE: Google Maps Platform Integration */}
+                      <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
+                        <GoogleMap
+                          defaultCenter={{ lat: 14.5995, lng: 120.9842 }} // Default to Manila
+                          defaultZoom={11}
+                          gestureHandling={'greedy'}
+                          disableDefaultUI={true}
+                          mapId="DEMO_MAP_ID"
+                          className="w-full h-full"
+                        >
+                          {session?.role === 'driver' && activeRoute && (
+                            <>
+                              <RouteLine origin={activeRoute.origin} destination={activeRoute.destination} />
+                              <AdvancedMarker position={activeRoute.origin}>
+                                <Pin background={'#10b981'} glyphColor={'#fff'} borderColor={'#064e3b'} />
+                              </AdvancedMarker>
+                              <AdvancedMarker position={activeRoute.destination}>
+                                <Pin background={'#ef4444'} glyphColor={'#fff'} borderColor={'#7f1d1d'} />
+                              </AdvancedMarker>
+                            </>
+                          )}
+                        </GoogleMap>
+                      </APIProvider>
+                      
+                      {session?.role === 'driver' && !activeRoute && (
+                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center">
+                          <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center max-w-sm text-center">
+                            <MapPin className="w-12 h-12 text-slate-300 mb-4" />
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">No active route</h3>
+                            <p className="text-slate-500 text-center">Accept a new delivery dispatch from the Available Deliveries page to view live routing.</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

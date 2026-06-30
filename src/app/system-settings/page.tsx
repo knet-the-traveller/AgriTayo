@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import NotificationBell from '../../components/NotificationBell';
-import {
+import { MapPin, 
   LayoutDashboard,
   BarChart3,
   Settings,
@@ -37,8 +37,8 @@ import {
   Sprout,
   ShoppingBag
 , Truck, Package
-} from 'lucide-react';
-import { getSession, logout, getUsers } from '../../lib/auth';
+, Inbox, CheckCircle2} from 'lucide-react';
+import { getSession, logout, getUsers, getRoleColor } from '../../lib/auth';
 
 const COOPS = [
   { id: 1, name:"Nueva Ecija Farmers Coop", location:"Cabanatuan City, Nueva Ecija", contact:"Ramon Dela Cruz", listings:5, verified:"Verified" },
@@ -78,6 +78,7 @@ const Toggle = ({ checked, onChange }: { checked: boolean, onChange: (v: boolean
 export default function SystemSettingsPage() {
   const [activeNav, setActiveNav] = useState('User Management');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [activeTab, setActiveTab] = useState('users');
   const [toastMessage, setToastMessage] = useState('');
 
@@ -94,6 +95,10 @@ export default function SystemSettingsPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
       const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
       const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
@@ -122,7 +127,11 @@ export default function SystemSettingsPage() {
   // Tab 1 States
   const [users, setUsers] = useState<any[]>([]);
   const [userRoleFilter, setUserRoleFilter] = useState('All');
-  const filteredUsers = users.filter((u: any) => userRoleFilter === 'All' || u.role.toLowerCase() === userRoleFilter.toLowerCase());
+  const filteredUsers = users.filter((u: any) => {
+    if (userRoleFilter === 'All') return true;
+    const filterRole = userRoleFilter.toLowerCase() === 'farmer' ? 'seller' : userRoleFilter.toLowerCase();
+    return u.role.toLowerCase() === filterRole;
+  });
   
   // Tab 3 States
   const [config, setConfig] = useState({
@@ -150,6 +159,7 @@ export default function SystemSettingsPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -182,15 +192,7 @@ export default function SystemSettingsPage() {
     }
   };
 
-  const getRoleColor = (role: string) => {
-    switch(role) {
-      case 'Superadmin': return 'bg-[#1a5c2e]/10 text-[#1a5c2e] border-[#1a5c2e]/20';
-      case 'Coop Admin': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Buyer': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Driver': return 'bg-slate-100 text-slate-700 border-slate-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
+
 
   const getStatusColor = (status: string) => {
     switch(status) {
@@ -236,7 +238,7 @@ export default function SystemSettingsPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -265,6 +267,11 @@ export default function SystemSettingsPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -333,7 +340,7 @@ export default function SystemSettingsPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -341,7 +348,7 @@ export default function SystemSettingsPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
+        <main className="animate-fadeIn flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
           <div className="max-w-[1400px] mx-auto pb-10 min-h-full">
             <div className="w-full">
               <div className="flex items-center justify-between mb-6">
@@ -360,7 +367,7 @@ export default function SystemSettingsPage() {
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
                       <span className="text-sm font-semibold text-slate-500 mb-2">Active This Week</span>
-                      <span className="text-3xl font-extrabold text-slate-900">38</span>
+                      <span className="text-3xl font-extrabold text-slate-900">{Math.floor(users.filter(u => u.status === 'Active').length * 0.8)}</span>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
                       <span className="text-sm font-semibold text-slate-500 mb-2">Pending Approval</span>
@@ -370,7 +377,7 @@ export default function SystemSettingsPage() {
 
                   {/* Filter Tabs */}
                   <div className="flex items-center gap-4 border-b border-slate-200 mt-2 mb-2 overflow-x-auto custom-scrollbar">
-                    {['All', 'Buyer', 'Seller', 'Driver', 'Coop Admin', 'Superadmin'].map(tab => (
+                    {['All', 'Buyer', 'Farmer', 'Driver', 'Coop Admin', 'Superadmin'].map(tab => (
                       <button
                         key={tab}
                         onClick={() => setUserRoleFilter(tab)}
@@ -408,7 +415,7 @@ export default function SystemSettingsPage() {
                             <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4 font-bold text-slate-900">{user.name}</td>
                               <td className="px-6 py-4">
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(user.role)}`}>{user.role}</span>
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(user.role)}`}>{user.role?.toLowerCase() === 'seller' ? 'Farmer' : user.role}</span>
                               </td>
                               <td className="px-6 py-4 font-medium text-slate-600">{user.org}</td>
                               <td className="px-6 py-4">

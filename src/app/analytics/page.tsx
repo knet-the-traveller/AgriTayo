@@ -25,7 +25,7 @@ import {
   Sprout,
   ShoppingBag
 , Truck, Package
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '../../lib/auth';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -81,9 +81,28 @@ const PROVINCE_SUPPLY = [
   { province: "Cavite", coops: 1, crops: "Sitaw, Kamatis", volume: "710", price: "₱48", status: "Low stock" },
 ];
 
+import { useCountUp } from '../../hooks/useCountUp';
+
+const AnimatedMetric = ({ valueStr }: { valueStr: any }) => {
+  if (valueStr === undefined || valueStr === null) return <span>0</span>;
+  const safeValueStr = String(valueStr ?? '');
+  const numMatch = safeValueStr.replace(/,/g, '').match(/[\d.]+/);
+  const num = numMatch ? parseFloat(numMatch[0]) : 0;
+  const animatedValue = useCountUp(num, 1000);
+  const isFloat = safeValueStr.includes('.');
+  const formattedNum = isFloat ? animatedValue.toFixed(1) : animatedValue.toLocaleString();
+  return <>{safeValueStr.replace(/[\d.,]+/, formattedNum)}</>;
+};
+
+const SkeletonChart = () => (
+  <div className="w-full h-[300px] animate-shimmer rounded-xl bg-slate-100" />
+);
+
 export default function AnalyticsPage() {
   const [activeNav, setActiveNav] = useState('Analytics');
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
 
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -98,6 +117,10 @@ export default function AnalyticsPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
       const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
       const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
@@ -107,6 +130,7 @@ export default function AnalyticsPage() {
       
       const activeForDriver = orders.filter((o: any) => o.driverId === user.id && o.status !== 'delivered' && o.status !== 'cancelled');
       setActiveDeliveriesCount(activeForDriver.length);
+      setTimeout(() => setIsDataLoading(false), 400);
     }
   }, []);
 
@@ -114,6 +138,7 @@ export default function AnalyticsPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -167,7 +192,7 @@ export default function AnalyticsPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -196,6 +221,11 @@ export default function AnalyticsPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -274,7 +304,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -282,7 +312,7 @@ export default function AnalyticsPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
+        <main className="animate-fadeIn flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
           <div className="max-w-[1600px] mx-auto space-y-8 pb-10">
             
             {/* Section 1: Summary KPI bar */}
@@ -295,7 +325,7 @@ export default function AnalyticsPage() {
                 { title: 'Avg. Price vs Middleman', value: '+24%', sub: 'farmers earning more', subColor: 'text-emerald-600', icon: <BarChart3 className="w-5 h-5 text-emerald-600" /> },
                 { title: 'Orders Fulfilled', value: '94.2%', sub: 'on-time delivery rate', subColor: 'text-emerald-600', icon: <CheckCircle2 className="w-5 h-5 text-emerald-600" /> },
               ].map((stat, i) => (
-                <div key={i} className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-200/60 transition-all duration-300 flex flex-col justify-between cursor-default hover:-translate-y-1">
+                <div key={i} style={{ animationDelay: `${i * 80}ms` }} className="animate-fadeIn group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-emerald-500/5 hover:border-emerald-200/60 transition-all duration-300 flex flex-col justify-between cursor-default hover:-translate-y-1">
                   <div className="flex items-center justify-between mb-5">
                     <span className="text-sm font-semibold text-slate-500 tracking-wide">{stat.title}</span>
                     <div className="bg-emerald-50/80 p-2.5 rounded-xl group-hover:bg-emerald-100/80 transition-colors duration-300">
@@ -303,7 +333,7 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-3xl font-extrabold text-slate-900 tracking-tight group-hover:text-emerald-950 transition-colors">{stat.value}</div>
+                    <div className="text-3xl font-extrabold text-slate-900 tracking-tight group-hover:text-emerald-950 transition-colors"><AnimatedMetric valueStr={stat.value} /></div>
                     <div className={`text-xs font-bold mt-2 ${stat.subColor}`}>{stat.sub}</div>
                   </div>
                 </div>
@@ -317,8 +347,9 @@ export default function AnalyticsPage() {
               <div className="flex-[6] bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 flex flex-col">
                 <h3 className="font-bold text-slate-900 mb-6 text-lg">Farm gate price vs. middleman price per crop</h3>
                 <div className="flex-1 h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={PRICE_COMPARISON} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  {isDataLoading ? <SkeletonChart /> : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={PRICE_COMPARISON} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                       <XAxis dataKey="crop" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => `₱${value}`} />
@@ -345,7 +376,8 @@ export default function AnalyticsPage() {
                       <Bar dataKey="agriTayo" name="AgriTayo (₱/kg)" fill="#1a5c2e" radius={[4, 4, 0, 0]} barSize={24} />
                       <Bar dataKey="middleman" name="Middleman (₱/kg)" fill="#f97316" radius={[4, 4, 0, 0]} barSize={24} />
                     </BarChart>
-                  </ResponsiveContainer>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
@@ -379,8 +411,9 @@ export default function AnalyticsPage() {
             <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6">
               <h3 className="font-bold text-slate-900 mb-6 text-lg">Harvest sold per day — last 7 days</h3>
               <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={WEEKLY_VOLUME} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                {isDataLoading ? <SkeletonChart /> : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={WEEKLY_VOLUME} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorKg" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#1a5c2e" stopOpacity={0.2}/>
@@ -409,7 +442,8 @@ export default function AnalyticsPage() {
                     <Area yAxisId="left" type="monotone" dataKey="kg" name="Volume Sold (kg)" stroke="#1a5c2e" strokeWidth={3} fillOpacity={1} fill="url(#colorKg)" />
                     <Area yAxisId="right" type="monotone" dataKey="value" name="Total Value (₱)" stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} fill="none" />
                   </AreaChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                )}
               </div>
               <p className="text-center text-sm font-semibold text-slate-500 mt-4 bg-slate-50 py-2 rounded-lg inline-block px-4 mx-auto w-max">
                 Peak day: Friday &middot; 2,100 kg &middot; ₱70,500

@@ -28,7 +28,7 @@ import {
   Sprout,
   ShoppingBag
 , Package
-} from 'lucide-react';
+, Inbox} from 'lucide-react';
 import { getSession, logout, getRoleColor } from '../../lib/auth';
 import { APIProvider, Map as GoogleMap, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 
@@ -66,6 +66,7 @@ const RouteLine = ({ origin, destination }: { origin: any, destination: any }) =
 export default function LiveTrackingPage() {
   const [activeNav, setActiveNav] = useState('Live Tracking');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sellerPendingOrdersCount, setSellerPendingOrdersCount] = useState(0);
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
 
   const [session, setSession] = useState<any>(null);
@@ -81,6 +82,10 @@ export default function LiveTrackingPage() {
     } else {
       setSession(user);
       setIsAuthLoading(false);
+
+      const _allSellerOrders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
+      const _pendingSellerOrders = _allSellerOrders.filter((o: any) => (o.sellerId === user.id || o.sellerName === user.name) && o.status === 'pending');
+      setSellerPendingOrdersCount(_pendingSellerOrders.length);
       
       const orders = JSON.parse(localStorage.getItem('agritayo_orders') || '[]');
       const pending = orders.filter((o: any) => o.buyerId === user.id && (o.status === 'pending' || o.status === 'confirmed'));
@@ -97,6 +102,7 @@ export default function LiveTrackingPage() {
     { name: 'Dashboard Overview', icon: LayoutDashboard, href: '/' },
     ...(session?.role !== 'driver' ? [{ name: 'Market', icon: Store, href: '/market' }] : []),
     ...(session?.role === 'seller' ? [{ name: 'Post Harvest', icon: Sprout, href: '/post-harvest' }] : []),
+    ...(session?.role === 'seller' ? [{ name: 'Orders', icon: Inbox, href: '/seller-orders' }] : []),
     ...(session?.role === 'buyer' ? [{ name: 'My Orders', icon: ShoppingBag, href: '/my-orders' }] : []),
     ...(session?.role === 'driver' ? [
       { name: 'Available Deliveries', icon: Truck, href: '/available-deliveries' },
@@ -169,7 +175,7 @@ export default function LiveTrackingPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">{session.name}</h3>
               <span className={`mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleColor(session.role)}`}>
-                {session.role}
+                {session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}
               </span>
             </div>
           )}
@@ -198,6 +204,11 @@ export default function LiveTrackingPage() {
                 {!isSidebarCollapsed && (
                   <div className="relative z-10 flex flex-1 items-center justify-between">
                     <span className="whitespace-nowrap">{item.name}</span>
+                                                            {item.name === 'Orders' && sellerPendingOrdersCount > 0 && (
+                      <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {sellerPendingOrdersCount}
+                      </span>
+                    )}
                                         {item.name === 'My Orders' && pendingOrdersCount > 0 && (
                       <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                         {pendingOrdersCount}
@@ -276,7 +287,7 @@ export default function LiveTrackingPage() {
                 </div>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-semibold text-slate-700 leading-tight">{session.name}</span>
-                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role}</span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">{session.role?.toLowerCase() === 'seller' ? 'Farmer' : session.role}</span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
@@ -284,7 +295,7 @@ export default function LiveTrackingPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
+        <main className="animate-fadeIn flex-1 overflow-y-auto custom-scrollbar p-8 z-0">
           <div className="max-w-[1600px] mx-auto space-y-8 flex flex-col min-h-full">
             
             {/* Stats Bar */}
@@ -326,7 +337,12 @@ export default function LiveTrackingPage() {
                   </div>
                 </div>
                 
-                <div className="flex-1 relative overflow-hidden bg-slate-100">
+                <div className="flex-1 relative overflow-hidden bg-slate-100 flex items-center justify-center">
+                  {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+                    <div style={{padding: '40px', textAlign: 'center', color: '#888'}}>
+                      Map unavailable — API key not configured.
+                    </div>
+                  ) : (
                   <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string}>
                     <GoogleMap
                       defaultCenter={{ lat: 12.8797, lng: 121.7740 }}
@@ -378,6 +394,7 @@ export default function LiveTrackingPage() {
                       ))}
                     </GoogleMap>
                   </APIProvider>
+                  )}
                   
                 </div>
               </div>
