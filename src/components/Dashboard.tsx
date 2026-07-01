@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { useCountUp } from '../hooks/useCountUp';
 import { SkeletonStatCard } from './Skeleton';
 import {
@@ -252,13 +251,9 @@ export default function Dashboard() {
           {/* Branding Header */}
           <div className="h-20 flex items-center px-6 border-b border-slate-100 justify-between">
             <div className={`flex items-center gap-3 cursor-pointer group ${isSidebarCollapsed ? 'mx-auto' : ''}`}>
-              <Image
-                src="/agritayo-logo.png"
-                alt="AgriTayo"
-                width={48}
-                height={48}
-                className="rounded-md"
-              />
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-2 rounded-xl shadow-sm group-hover:shadow-emerald-500/20 group-hover:scale-105 transition-all duration-300 shrink-0">
+                <Leaf className="w-5 h-5 text-white" />
+              </div>
               {!isSidebarCollapsed && (
                 <div className="whitespace-nowrap overflow-hidden transition-all duration-300">
                   <h1 className="font-bold text-lg leading-tight tracking-tight text-slate-900 group-hover:text-emerald-700 transition-colors">Agri Tayo</h1>
